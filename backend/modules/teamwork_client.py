@@ -175,23 +175,38 @@ class TeamworkClient:
         client_lower = client_name.lower()
 
         for project in projects:
-            # Check company name
-            company = project.get('company', {})
-            company_name = company.get('name', '').lower()
+            # Check company name (fetch if we have company ID)
+            company_id = project.get('companyId') or project.get('company', {}).get('id')
+            company_name = 'N/A'
+
+            if company_id:
+                company_name = self._get_company_name(company_id)
 
             # Also check project name as fallback
             project_name = project.get('name', '').lower()
 
-            if (client_lower in company_name or company_name in client_lower or
+            if (company_name and (client_lower in company_name.lower() or company_name.lower() in client_lower) or
                 client_lower in project_name or project_name in client_lower):
-                logger.info(f"Found matching project: {project.get('name')} (Company: {company.get('name')}, ID: {project.get('id')})")
+                logger.info(f"Found matching project: {project.get('name')} (Company: {company_name}, ID: {project.get('id')})")
                 return {
                     'id': project.get('id'),
                     'name': project.get('name'),
-                    'company': company.get('name', 'N/A')
+                    'company': company_name
                 }
 
         raise ValueError(f"No project found for client: {client_name}")
+
+    def _get_company_name(self, company_id: int) -> str:
+        """Fetch company name by ID."""
+        try:
+            url = f"{self.api_base}/companies/{company_id}.json"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            return data.get('company', {}).get('name', 'N/A')
+        except Exception as e:
+            logger.error(f"Failed to fetch company name: {e}")
+            return 'N/A'
 
     def get_lists(self, project_id: Optional[str] = None) -> list:
         """Get task lists for a project."""

@@ -48,13 +48,26 @@ function analyzeEmailIssue(e) {
     // Build new card showing summary
     var card = CardService.newCardBuilder();
     card.setHeader(CardService.newCardHeader()
-      .setTitle('📋 Review Issue'));
+      .setTitle('📋 Review & Create Task'));
 
+    // Project confirmation section (prominent)
+    var projectWidget = CardService.newDecoratedText()
+      .setTopLabel('✅ Project Found')
+      .setText('<b>' + result.project.name + '</b>');
+
+    // Only show company if it exists
+    if (result.project.company && result.project.company !== 'N/A') {
+      projectWidget.setBottomLabel('Company: ' + result.project.company);
+    }
+
+    var projectSection = CardService.newCardSection()
+      .addWidget(projectWidget);
+
+    // Issue summary section
     var summarySection = CardService.newCardSection()
+      .setHeader('Issue Summary')
       .addWidget(CardService.newTextParagraph()
-        .setText('<b>Project:</b> ' + result.project.name + ' (' + result.project.company + ')'))
-      .addWidget(CardService.newTextParagraph()
-        .setText('<b>Issue Summary:</b><br>' + result.summary));
+        .setText(result.summary));
 
     var confirmSection = CardService.newCardSection()
       .addWidget(CardService.newTextInput()
@@ -73,6 +86,7 @@ function analyzeEmailIssue(e) {
             'summary': result.summary
           })));
 
+    card.addSection(projectSection);
     card.addSection(summarySection);
     card.addSection(confirmSection);
 
