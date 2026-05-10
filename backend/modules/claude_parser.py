@@ -102,7 +102,15 @@ Rules:
   Subject: [subject]
   Date: [date]"
 - Infer priority from language: "urgent", "broken", "critical", "not working" -> high; "minor", "suggestion" -> low
-- Extract relevant tags (e.g., "bug", "website", "form", "payment", etc.)
+- Tags: IMPORTANT - Automatically detect and add these keywords as tags if found in email subject or body:
+  * "bug" - for bugs, defects, errors, issues
+  * "defect" - for defects or broken features
+  * "update" - for update requests or changes
+  * "feature" - for feature requests
+  * "enhancement" - for improvements
+  * "performance" - for speed/performance issues
+  * "security" - for security concerns
+  * Also add any other relevant tags from the email (e.g., "payment", "form", "login", etc.)
 - Parse relative dates: "Friday" -> next Friday, "ASAP" -> today, "tomorrow" -> tomorrow
 
 Return ONLY valid JSON, no other text."""

@@ -72,9 +72,7 @@ class TeamworkClient:
         if task_data.get('due_date'):
             payload['dueDate'] = task_data['due_date']
 
-        if task_data.get('tags'):
-            payload['tags'] = task_data['tags']
-
+        # Note: Tags will be added separately after task creation
         logger.info(f"Creating task in Teamwork: {payload}")
 
         try:
@@ -90,13 +88,21 @@ class TeamworkClient:
                 timeout=30
             )
             logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response body: {response.text}")
             response.raise_for_status()
 
             result = response.json()
-            task_id = result.get('id')
+            logger.info(f"Parsed response: {result}")
+
+            # Try different possible locations for task ID
+            task_id = result.get('id') or result.get('task', {}).get('id')
             task_url = f"{self.tenant_url}/tasks/{task_id}"
 
             logger.info(f"Task created successfully: {task_id}")
+
+            # Add tags if provided
+            if task_data.get('tags') and task_id:
+                self._add_tags_to_task(task_id, task_data['tags'])
 
             return {
                 'id': task_id,
@@ -108,6 +114,31 @@ class TeamworkClient:
             logger.error(f"Failed to create task in Teamwork: {type(e).__name__}: {e}")
             logger.exception("Full traceback:")
             raise Exception(f"Teamwork API error: {str(e)}")
+
+    def _add_tags_to_task(self, task_id: str, tags: list):
+        """Add tags to a task after creation."""
+        try:
+            # Teamwork API v3 expects PUT with tags array
+            url = f"{self.api_base}/tasks/{task_id}/tags.json"
+
+            # Send all tags in one request
+            tag_payload = {'tags': [{'name': tag} for tag in tags]}
+
+            response = requests.put(
+                url,
+                json=tag_payload,
+                headers=self.headers,
+                timeout=30
+            )
+
+            if response.status_code in [200, 201, 204]:
+                logger.info(f"Added {len(tags)} tags to task {task_id}")
+            else:
+                logger.warning(f"Failed to add tags: {response.status_code} - {response.text}")
+
+        except Exception as e:
+            logger.error(f"Error adding tags to task: {e}")
+            # Don't fail the whole task creation if tags fail
 
     def _get_default_tasklist(self, project_id: str) -> str:
         """Get the first task list ID for a project."""
