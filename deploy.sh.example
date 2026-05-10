@@ -8,4 +8,4 @@ gcloud run deploy gmail-to-teamwork \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars "CLAUDE_API_KEY=YOUR_CLAUDE_API_KEY,TEAMWORK_API_KEY=YOUR_TEAMWORK_API_KEY,TEAMWORK_TENANT_URL=https://YOUR_TENANT.teamwork.com,TEAMWORK_PROJECT_ID=YOUR_PROJECT_ID,TEAMWORK_LIST_ID=YOUR_LIST_ID"
+  --set-env-vars "CLAUDE_API_KEY=YOUR_CLAUDE_API_KEY,TEAMWORK_API_KEY=YOUR_TEAMWORK_API_KEY,TEAMWORK_TENANT_URL=https://YOUR_TENANT.teamwork.com"

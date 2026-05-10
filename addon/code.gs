@@ -5,21 +5,25 @@ function buildAddOn(e) {
 
   // Email context section
   var emailContext = getEmailContextFromEvent(e);
+
+  var emailSummary = emailContext.subject !== '(no email selected)'
+    ? '<b>From:</b> ' + emailContext.sender + '<br><b>Subject:</b> ' + emailContext.subject
+    : '<i>No email selected</i>';
+
   var contextSection = CardService.newCardSection()
     .addWidget(CardService.newTextParagraph()
-      .setText('<b>From:</b> ' + emailContext.sender + '<br><b>Subject:</b> ' + emailContext.subject));
+      .setText(emailSummary));
 
-  // Command input section
+  // Input section for client name
   var inputSection = CardService.newCardSection()
     .addWidget(CardService.newTextInput()
-      .setFieldName('command')
-      .setTitle('💬 Natural Language Command')
-      .setHint("e.g., 'Create urgent task: review contract, due Friday'")
-      .setMultiline(true))
+      .setFieldName('client_name')
+      .setTitle('🏢 Client/Company Name')
+      .setHint('Enter client or company name'))
     .addWidget(CardService.newTextButton()
-      .setText('Create Task')
+      .setText('Analyze Issue')
       .setOnClickAction(CardService.newAction()
-        .setFunctionName('createTaskFromCard')));
+        .setFunctionName('analyzeEmailIssue')));
 
   card.addSection(contextSection);
   card.addSection(inputSection);
@@ -27,23 +31,79 @@ function buildAddOn(e) {
   return card.build();
 }
 
-function createTaskFromCard(e) {
-  var command = e.formInput.command;
+function analyzeEmailIssue(e) {
+  var clientName = e.formInput.client_name;
 
-  if (!command) {
+  if (!clientName) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification()
-        .setText('⚠️ Please enter a command'))
+        .setText('⚠️ Please enter client/company name'))
       .build();
   }
 
   var emailContext = getEmailContextFromEvent(e);
-  var result = sendToBackend(command, emailContext);
+  var result = analyzeEmail(emailContext, clientName);
+
+  if (result.success) {
+    // Build new card showing summary
+    var card = CardService.newCardBuilder();
+    card.setHeader(CardService.newCardHeader()
+      .setTitle('📋 Review Issue'));
+
+    var summarySection = CardService.newCardSection()
+      .addWidget(CardService.newTextParagraph()
+        .setText('<b>Project:</b> ' + result.project.name + ' (' + result.project.company + ')'))
+      .addWidget(CardService.newTextParagraph()
+        .setText('<b>Issue Summary:</b><br>' + result.summary));
+
+    var confirmSection = CardService.newCardSection()
+      .addWidget(CardService.newTextInput()
+        .setFieldName('task_title')
+        .setTitle('Task Title (optional)')
+        .setHint('Leave blank to auto-generate from summary')
+        .setValue(''))
+      .addWidget(CardService.newTextButton()
+        .setText('✅ Create Task')
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('createTaskWithSummary')
+          .setParameters({
+            'client_name': clientName,
+            'project_id': String(result.project.id),
+            'project_name': result.project.name,
+            'summary': result.summary
+          })));
+
+    card.addSection(summarySection);
+    card.addSection(confirmSection);
+
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().pushCard(card.build()))
+      .build();
+  } else {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification()
+        .setText('❌ ' + result.error))
+      .build();
+  }
+}
+
+function createTaskWithSummary(e) {
+  var clientName = e.parameters.client_name;
+  var projectId = e.parameters.project_id;
+  var projectName = e.parameters.project_name;
+  var summary = e.parameters.summary;
+  var customTitle = e.formInput.task_title || '';
+
+  var command = customTitle || summary;
+  var emailContext = getEmailContextFromEvent(e);
+
+  var result = sendToBackend(command, emailContext, clientName, projectId, projectName);
 
   if (result.success) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification()
-        .setText('✅ Task created: ' + result.task_title))
+        .setText('✅ Task created in ' + result.project_name))
+      .setNavigation(CardService.newNavigation().popToRoot())
       .build();
   } else {
     return CardService.newActionResponseBuilder()
@@ -94,11 +154,40 @@ function getEmailContextFromEvent(e) {
   }
 }
 
-function sendToBackend(command, emailContext) {
+function analyzeEmail(emailContext, clientName) {
+  var url = 'https://gmail-to-teamwork-740248311644.us-central1.run.app/analyze-email';
+  var payload = {
+    email: emailContext,
+    client_name: clientName
+  };
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(url, options);
+    var data = JSON.parse(response.getContentText());
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Connection failed: ' + error.message
+    };
+  }
+}
+
+function sendToBackend(command, emailContext, clientName, projectId, projectName) {
   var url = 'https://gmail-to-teamwork-740248311644.us-central1.run.app/create-task';
   var payload = {
     command: command,
-    email: emailContext
+    email: emailContext,
+    client_name: clientName,
+    project_id: projectId,
+    project_name: projectName
   };
 
   var options = {

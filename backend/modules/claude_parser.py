@@ -11,6 +11,47 @@ class ClaudeParser:
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-6"
 
+    def summarize_issue(self, email_context: dict) -> str:
+        """Generate a concise summary of the issue from email context."""
+
+        email_preview = f"""
+Email Context:
+- From: {email_context.get('sender', 'unknown')}
+- Subject: {email_context.get('subject', '(no subject)')}
+- Date: {email_context.get('date', 'unknown')}
+- Body: {email_context.get('body', '')[:500]}
+"""
+
+        prompt = f"""Analyze this email and provide a concise 2-3 sentence summary of the website issue being reported.
+
+{email_preview}
+
+Focus on:
+- What is broken or not working
+- Where on the website (if mentioned)
+- Any error messages or symptoms
+
+Return ONLY the summary text, no JSON or formatting."""
+
+        try:
+            logger.info("Calling Claude API to summarize issue...")
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=300,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            logger.info("Claude API call successful")
+
+            summary = response.content[0].text.strip()
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to summarize issue: {type(e).__name__}: {e}")
+            # Fallback to basic summary
+            return f"Issue reported in email: {email_context.get('subject', 'No subject')}"
+
     def parse(self, command: str, email_context: dict) -> dict:
         """
         Parse natural language command into task structure using Claude.
@@ -32,12 +73,12 @@ Email Context:
 - Body Preview: {email_context.get('body', '')[:300]}
 """
 
-        system_prompt = """You are a task parsing assistant. Your job is to parse natural language commands into structured Teamwork task data.
+        system_prompt = """You are a task parsing assistant for website issue tracking. Your job is to parse natural language commands and email context into structured Teamwork task data.
 
-Parse the user's command and return valid JSON (no markdown, just pure JSON) with these fields:
+Parse the user's command and email context and return valid JSON (no markdown, just pure JSON) with these fields:
 {
   "title": "concise task title (required)",
-  "description": "fuller description with context (REQUIRED - must include email context)",
+  "description": "clear description of the website issue with email context (REQUIRED)",
   "priority": "low, medium, high, or urgent (default: medium)",
   "due_date": "ISO format date like 2026-05-15, or null if not specified",
   "tags": ["list", "of", "tags"],
@@ -45,13 +86,24 @@ Parse the user's command and return valid JSON (no markdown, just pure JSON) wit
 }
 
 Rules:
-- Title is REQUIRED - extract it from the command
-- Description is REQUIRED - ALWAYS include the email context (From, Subject, Body preview)
-- Format the description as: "[Task details from command]\n\nEmail Context:\nFrom: [sender]\nSubject: [subject]\n\n[body preview]"
-- Parse relative dates: "Friday" -> next Friday, "Monday" -> next Monday, "today" -> today, "tomorrow" -> tomorrow
-- Infer priority from language: "urgent", "asap", "critical" -> urgent; "important" -> high; "when you can" -> low
-- Extract tags from keywords in the command
-- Be pragmatic: if a field isn't mentioned, set to null or use default
+- Title should be concise and action-oriented (e.g., "Fix broken contact form on homepage")
+- Description is REQUIRED and must include:
+  1. Clear summary of the issue reported
+  2. Email context (From, Subject, Date)
+  3. Relevant details from email body
+- Format the description as:
+  "Issue: [clear summary of what's broken/wrong]
+
+  Details from client:
+  [relevant details from email body]
+
+  Email Context:
+  From: [sender]
+  Subject: [subject]
+  Date: [date]"
+- Infer priority from language: "urgent", "broken", "critical", "not working" -> high; "minor", "suggestion" -> low
+- Extract relevant tags (e.g., "bug", "website", "form", "payment", etc.)
+- Parse relative dates: "Friday" -> next Friday, "ASAP" -> today, "tomorrow" -> tomorrow
 
 Return ONLY valid JSON, no other text."""
 

@@ -7,10 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 class TeamworkClient:
-    def __init__(self, tenant_url: str, project_id: str, list_id: str, api_key: str = None):
+    def __init__(self, tenant_url: str, api_key: str):
         self.tenant_url = tenant_url.rstrip('/')
-        self.project_id = project_id
-        self.list_id = list_id
         self.api_key = api_key
         self.api_base = f"{self.tenant_url}/projects/api/v3"
 
@@ -23,7 +21,7 @@ class TeamworkClient:
             auth_string = base64.b64encode(f"{api_key}:".encode()).decode()
             self.headers['Authorization'] = f'Basic {auth_string}'
 
-    def create_task(self, task_data: dict) -> dict:
+    def create_task(self, task_data: dict, project_id: str) -> dict:
         """
         Create a task in Teamwork.
 
@@ -36,6 +34,7 @@ class TeamworkClient:
                 'tags': [str] (optional),
                 'status': 'to_do', 'in_progress' (optional)
             }
+            project_id: Project ID to create task in (required)
 
         Returns:
             {'id': task_id, 'url': task_url, 'title': task_title}
@@ -44,6 +43,12 @@ class TeamworkClient:
         title = task_data.get('title')
         if not title:
             raise ValueError("Task title is required")
+
+        if not project_id:
+            raise ValueError("Project ID is required")
+
+        # Get first task list for the project
+        list_id = self._get_default_tasklist(project_id)
 
         priority_map = {
             'low': 1,
@@ -74,7 +79,7 @@ class TeamworkClient:
 
         try:
             # Correct endpoint: /tasklists/{id}/tasks.json
-            url = f"{self.api_base}/tasklists/{self.list_id}/tasks.json"
+            url = f"{self.api_base}/tasklists/{list_id}/tasks.json"
             logger.info(f"Posting to URL: {url}")
             logger.info(f"Payload: {payload}")
 
@@ -104,16 +109,58 @@ class TeamworkClient:
             logger.exception("Full traceback:")
             raise Exception(f"Teamwork API error: {str(e)}")
 
+    def _get_default_tasklist(self, project_id: str) -> str:
+        """Get the first task list ID for a project."""
+        try:
+            url = f"{self.api_base}/projects/{project_id}/tasklists.json"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            lists = response.json().get('tasklists', [])
+
+            if not lists:
+                raise ValueError(f"No task lists found in project {project_id}")
+
+            return lists[0]['id']
+        except Exception as e:
+            logger.error(f"Failed to fetch task lists: {e}")
+            raise
+
     def get_projects(self) -> list:
         """Get list of available projects."""
         try:
-            url = f"{self.api_base}/projects"
-            response = requests.get(url)
+            url = f"{self.api_base}/projects.json"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            logger.info(f"Get projects response status: {response.status_code}")
             response.raise_for_status()
-            return response.json().get('projects', [])
+            data = response.json()
+            return data.get('projects', [])
         except Exception as e:
             logger.error(f"Failed to fetch projects: {e}")
             raise
+
+    def find_project_by_company(self, client_name: str) -> dict:
+        """Find project by matching company/client name (case-insensitive)."""
+        projects = self.get_projects()
+        client_lower = client_name.lower()
+
+        for project in projects:
+            # Check company name
+            company = project.get('company', {})
+            company_name = company.get('name', '').lower()
+
+            # Also check project name as fallback
+            project_name = project.get('name', '').lower()
+
+            if (client_lower in company_name or company_name in client_lower or
+                client_lower in project_name or project_name in client_lower):
+                logger.info(f"Found matching project: {project.get('name')} (Company: {company.get('name')}, ID: {project.get('id')})")
+                return {
+                    'id': project.get('id'),
+                    'name': project.get('name'),
+                    'company': company.get('name', 'N/A')
+                }
+
+        raise ValueError(f"No project found for client: {client_name}")
 
     def get_lists(self, project_id: Optional[str] = None) -> list:
         """Get task lists for a project."""
