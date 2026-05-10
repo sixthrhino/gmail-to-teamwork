@@ -1,0 +1,31 @@
+{
+  "timeZone": "America/Phoenix",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.addons.current.message.readonly",
+    "https://www.googleapis.com/auth/gmail.addons.execute",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/script.locale"
+  ],
+  "urlFetchWhitelist": [
+    "https://gmail-to-teamwork-740248311644.us-central1.run.app/"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Gmail to Teamwork",
+      "logoUrl": "https://www.teamwork.com/favicon.ico",
+      "useLocaleFromApp": true
+    },
+    "gmail": {
+      "contextualTriggers": [
+        {
+          "unconditional": {},
+          "onTriggerFunction": "buildAddOn"
+        }
+      ]
+    }
+  }
+}
